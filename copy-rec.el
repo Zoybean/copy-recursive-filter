@@ -46,33 +46,64 @@ If a FILE is a directory, its contents are not filtered by TRANSFORMS - the dire
 Returns a summary of skipped and successful copies."
   (interactive (list (dired-get-marked-files)
                      (crf--read-transforms)))
-  (cl-loop for src in files
-           for dst = (crf-transform-path src transforms)
-           if (file-in-directory-p dst src)
-           do
-           (message "skipping %S: cannot copy into own subdirectory %S" src dst)
-           and collect (cons src dst) into skipped
-           else if (not dst)
-           do
-           (message "skipping %S: no destination" src)
-           and collect src into skipped
-           else do
-           (message "copying %S -> %S" src dst)
-           (crf-do-copy src dst)
-           and collect (cons src dst) into success
-           finally return
-           (progn
-             (message "finished copy")
-             `((:skipped ,skipped) (:success ,success)))))
+  (dlet ((crf--remember-answer nil))
+    (cl-loop for src in files
+             for dst = (crf-transform-path src transforms)
+             if (file-in-directory-p dst src)
+             do
+             (message "skipping %S: cannot copy into own subdirectory %S" src dst)
+             and collect (cons src dst) into skipped
+             else if (not dst)
+             do
+             (message "skipping %S: no destination" src)
+             and collect src into skipped
+             else if (and (file-exists-p dst)
+                          (not (crf--prompt-overwrite src dst)))
+             do
+             (message "skipping %S: forbidden overwrite" src)
+             and collect src into skipped
+             else do
+             (message "copying %S -> %S" src dst)
+             (crf-do-copy src dst)
+             and collect (cons src dst) into success
+             finally return
+             (progn
+               (message "finished copy")
+               `((:skipped ,skipped) (:success ,success))))))
 
 (defun crf-do-copy (src dst)
+  "Copy SRC to DST, overwriting recursively."
   (let ((dst-dir (file-name-directory dst))
         (dired-recursive-copies 'always))
     (mkdir dst-dir t)
     (if (file-directory-p src)
         ;; this splices original contents with new,
-        ;; when the dest exists
+        ;; when the dest exists.
+        ;; Always overwrites.
         (copy-directory src dst nil :parents)
       (dired-copy-file src dst :ok))))
+
+(defun crf--prompt-overwrite (src dst)
+  (let ((read-answer-short t))
+    (pcase
+        (or crf--remember-answer
+            (intern
+             (read-answer (format "Overwrite %S -> %S? " src dst)
+                          '(("yes"  ?y "copy, overwriting this destination")
+                            ("no"   ?n "skip this copy")
+                            ("all"  ?a "overwrite this and all remaining")
+                            ("none" ?! "skip this and all remaining")
+                            ("help" ?h "show help")
+                            ("quit" ?q "exit")))))
+      ('yes t)
+      ('no nil)
+      ('all
+       (setq crf--remember-answer 'yes)
+       t)
+      ('none
+       (setq crf--remember-answer 'no)
+       nil)
+      ('quit
+       (signal 'quit)))))
 
 (provide 'crf)
