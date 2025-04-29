@@ -42,25 +42,37 @@
   "Copy all the given FILES, determining the source for each according to the alist TRANSFORMS.
 
 When called interactively, FILES is all marked files in the current `dired' buffer.
-If a FILE is a directory, its contents are not filtered by TRANSFORMS - the directory is simply copied wholesale."
+If a FILE is a directory, its contents are not filtered by TRANSFORMS - the directory is simply copied wholesale.
+Returns a summary of skipped and successful copies."
   (interactive (list (dired-get-marked-files)
                      (crf--read-transforms)))
   (cl-loop for src in files
            for dst = (crf-transform-path src transforms)
-           if dst
+           if (file-in-directory-p dst src)
            do
+           (message "skipping %S: cannot copy into own subdirectory %S" src dst)
+           and collect (cons src dst) into skipped
+           else if (not dst)
+           do
+           (message "skipping %S: no destination" src)
+           and collect src into skipped
+           else do
            (message "copying %S -> %S" src dst)
            (crf-do-copy src dst)
-           else do
-           (message "skipping %S: no destination" src)
-           finally do
-           (message "done")))
+           and collect (cons src dst) into success
+           finally return
+           (progn
+             (message "finished copy")
+             `((:skipped ,skipped) (:success ,success)))))
 
 (defun crf-do-copy (src dst)
   (let ((dst-dir (file-name-directory dst))
         (dired-recursive-copies 'always))
     (mkdir dst-dir t)
-    (dired-copy-file src dst 0) ; integer third arg (mostly) means ask before overwriting
-    ))
+    (if (file-directory-p src)
+        ;; this splices original contents with new,
+        ;; when the dest exists
+        (copy-directory src dst nil :parents)
+      (dired-copy-file src dst :ok))))
 
 (provide 'crf)
