@@ -49,19 +49,8 @@ Returns a summary of skipped and successful copies."
   (dlet ((crf--remember-answer nil))
     (cl-loop for src in files
              for dst = (crf-transform-path src transforms)
-             if (file-in-directory-p dst src)
-             do
-             (message "skipping %S: cannot copy into own subdirectory %S" src dst)
-             and collect (cons src dst) into skipped
-             else if (not dst)
-             do
-             (message "skipping %S: no destination" src)
-             and collect src into skipped
-             else if (and (file-exists-p dst)
-                          (not (crf--prompt-overwrite src dst)))
-             do
-             (message "skipping %S: forbidden overwrite" src)
-             and collect src into skipped
+             if (crf--skip-reason src dst)
+             collect it into skipped
              else do
              (message "copying %S -> %S" src dst)
              (crf-do-copy src dst)
@@ -70,6 +59,19 @@ Returns a summary of skipped and successful copies."
              (progn
                (message "finished copy")
                `((:skipped ,skipped) (:success ,success))))))
+
+(defun crf--skip-reason (src dst)
+  "Returns nil if the copy should proceed, or a non-nil value indicating the reason the copy should be skipped."
+  (cond ((not dst)
+         (message "skipping %S: no destination specified" src)
+         `(unspecified-dest ,src))
+        ((file-in-directory-p dst src)
+         (message "skipping %S: cannot copy into own subdirectory %S" src dst)
+         `(recur-cycle ,src ,dst))
+        ((and (file-exists-p dst)
+              (not (crf--prompt-overwrite src dst)))
+         (message "skipping %S: forbidden overwrite" src)
+         `(no-replace ,src ,dst))))
 
 (defun crf-do-copy (src dst)
   "Copy SRC to DST, overwriting recursively."
