@@ -43,10 +43,12 @@
 
 When called interactively, FILES is all marked files in the current `dired' buffer.
 If a FILE is a directory, its contents are not filtered by TRANSFORMS - the directory is simply copied wholesale.
+Symlinks are copied as symlinks.
 Returns a summary of skipped and successful copies."
   (interactive (list (dired-get-marked-files)
                      (crf--read-transforms)))
-  (dlet ((crf--remember-answer nil))
+  (dlet ((crf--remember-answer nil)
+         (copy-directory-create-symlink t))
     (cl-loop for src in files
              for dst = (crf-transform-path src transforms)
              if (crf--skip-reason src dst)
